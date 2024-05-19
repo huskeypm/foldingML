@@ -20,3 +20,6 @@ python3 processSimulations.py -generate -nstruct 99 -case traj7
 python3 processSimulations.py -postprocess -nstruct 99 -case traj3
 python3 processSimulations.py -postprocess -nstruct 99 -case traj7    
 
+
+## EFhand
+searches for EFhands in thick filament proteins

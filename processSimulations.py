@@ -10,6 +10,7 @@ import matplotlib.pylab as plt
 protLen=202
 # firstAtom = "BB  MET B   1"
 mask = ":MET@BB" # i can't get resid 1 to work correctly, so this is a workaround
+nStruct=200
 
 
 ##
@@ -103,7 +104,8 @@ def GetTrajData(traj,nStruct = 2):
     ## compute radgyr
     data = pt.radgyr( traj, mask=mask)
     #plt.plot(data)
-    daHisto,binEdges = np.histogram(data, bins=10,range=[10,20],density=True)
+    #daHisto,binEdges = np.histogram(data, bins=10,range=[10,20],density=True)
+    daHisto,binEdges = np.histogram(data, bins=10,density=True)
     #plt.plot(binEdges,daHisto,label=i)
     #print(binEdges) 
     #plt.plot(binEdges[0:10],daHisto,label=i)
@@ -129,19 +131,53 @@ def GetTrajData(traj,nStruct = 2):
   return copies               
 
 def ScoreFasta(df):
+  """
+  Computes the number of negatively charged a.a. (irrespective of protonation) 
+  """
   feature = "fasta"
   #nEle = len( df.index ) 
   vals = df[feature]
   nRes = int(len(vals[0]))
-  scores = [ x.count("E")/nRes for x in vals ]
-  df['negative']=scores
+
+  def tally(vals,aa="E"):
+    scores = [ x.count(aa) for x in vals ]
+    scores = np.sum(scores)/nRes
+    return scores
+  nscores = tally(vals,aa="D")
+  nscores+= tally(vals,aa="E")
+  df['negativeFasta']=nscores
+
+  pscores = tally(vals,aa="K")
+  pscores+= tally(vals,aa="R")
+  df['positiveFasta']=pscores
+
+def ScoreProtonation(df,pH=None):
+  '''
+  Protonation state as determined by protonation.ipynb
+  HARD CODED
+  '''
+  pH = int(pH)
+  if pH == 3:
+      rhoN = -0.052513823529411766 
+      rhoP = 0.6387256176470587
+  elif pH==7:
+      rhoN = -0.621903448275862 
+      rhoP = 6.89655172413793e-08
+  else:
+      raise RuntimeError("pH not understood")
+
+  df['negativepH']=rhoN         
+  df['positivepH']=rhoP         
+  
+
+
 
 import re 
 def stringArToAr(stringAr):
   val = re.sub('\[\s*',"",stringAr)
   val = re.sub('\s*\]',"",val)
   val = re.sub('\n',"",val)
-  print(val)
+  #print(val)
   x = val.split()         
   x = np.asarray(x,dtype='float')
   return x 
@@ -158,8 +194,8 @@ def ScoreRMSF(rmsf):
 # get all data 
 #nStruct = 10 # 
 
-def doit(mode=None,case=None):
-  print(case,mode)
+def doit(mode=None,case=None,nStruct=2):
+  #print(case,mode)
   if "traj3" in case:
     caseToProcess = "../trajs3/system_reduced_protein.pdb"
     dataFile = "traj3.csv"
@@ -173,13 +209,14 @@ def doit(mode=None,case=None):
 
   if mode is "generation":
     print("Generating data from trajs") 
-    nStruct,traj = LoadTraj(caseToProcess)           
-    nStruct=30 
+    nStructPossible,traj = LoadTraj(caseToProcess)           
+    nStruct = np.min([nStruct,nStructPossible])
     print("Processing %d"%nStruct)
     copyData = GetTrajData(traj,nStruct = nStruct)
     df = pd.DataFrame.from_dict(copyData) 
   
     # should do pickle eventually) 
+    print("Printing to ",dataFile) 
     df.to_csv(dataFile) 
   
   elif mode is "postprocess":
@@ -188,6 +225,8 @@ def doit(mode=None,case=None):
     dfa = pd.read_csv( inputFile )              
   
     ScoreFasta(dfa)
+    val = re.sub('traj',"",case)            
+    ScoreProtonation(dfa,pH=val)
   
     out = dataFile.replace('.csv',"_scored.csv") 
     dfa.to_csv(out)                              
@@ -241,14 +280,18 @@ if __name__ == "__main__":
 
   # Loops over each argument in the command line 
   for i,arg in enumerate(sys.argv):
+    #print(arg) 
     # calls 'doit' with the next argument following the argument '-validation'
     if(arg=="-generation"):
-        mode="generation"
+      mode="generation"
     if(arg=="-postprocess"):
-        mode="postprocess"
+      mode="postprocess"
+    if(arg=="-nstruct"):             
+      nStruct=int(sys.argv[i+1]) 
     if(arg=="-case"):
       arg1=sys.argv[i+1] 
-      doit(mode=mode,case=arg1)
+      doit(mode=mode,case=arg1,nStruct=nStruct)
+      quit()
   
 
 
